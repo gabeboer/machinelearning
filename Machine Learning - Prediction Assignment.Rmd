@@ -1,0 +1,135 @@
+---
+title: "Machine Learning - Prediction"
+author: "Gabe Boer"
+date: "13 november 2017"
+output: 
+  html_document: 
+    fig_height: 4
+    keep_md: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Excecutive Summary
+This document shows what machine learning can do in predicting whether the barbell lift was correctly or not (5 different classes). A number of machine learning models have been applied and cross validated. The random forest model has the highest accuracy.
+
+## Data
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+### Getting the data
+Getting the data and store in local variables 'training' and 'test', using read.csv2 function.
+
+```{r data}
+urlTrain <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+urlTest <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+download.file(urlTrain, destfile = "pml-training.csv")
+download.file(urlTest, destfile = "pml-testing.csv")
+training <- read.csv2("pml-training.csv", sep=",", dec = ".")
+test <- read.csv2("pml-testing.csv", sep=",", dec = ".")
+
+#View(test)
+dim(training)
+table(training$classe)
+```
+
+### Libraries and seed
+```{r libseed, echo=FALSE}
+library(caret); library(plyr); library(klaR) 
+library(lubridate);library(ggplot2);library(dplyr)
+library(lattice); library(randomForest); library(rpart); library(rpart.plot)
+set.seed(88) # for reproducibility
+
+```
+## Data Preparation
+
+### Removing the 'near zero' dimensions
+160 columns is a lot. In this step we'll reduce the number of dimensions. 
+The first 7 columns will not help in prediction and will be removed (rec.no., username, time related). Next: every variable with over 90% NA's can be removed.
+A number of variables will have a high correlation (with PCA dimension reduction)
+
+```{r less}
+#replace the DIV/0 by NA
+#revalue(training$kurtosis_yaw_belt, c("#DIV/0!"=NA))
+#revalue(training$kurtosis_yaw_forearm, c("#DIV/0!"=NA))
+training[training=="#DIV/0!"] <- NA
+NearZero <- nearZeroVar(training, saveMetrics = TRUE)
+training=training[,NearZero$nzv==FALSE]
+
+NAcount = training %>% summarize_all(funs(sum(is.na(.)) / length(.)))
+NAcol = which(NAcount>0.9)
+colnames(training[,c(1:7)])
+training=training[,-NAcol]
+training=training[,-c(1:7)]
+#and make sure test equals training setup
+test=test[,NearZero$nzv==FALSE]
+test=test[,-NAcol]
+test=test[,-c(1:7)]
+```
+
+### Splitting the training set
+In the end we need to have to use the 20 records as available in the test dataset.
+To test my model, I'll split the training set in a training and a validation set (70/30).
+```{r split}
+inTrain <- createDataPartition(y=training$classe, p=0.7, list = FALSE)
+train7 <- training[inTrain,]
+train3 <- training[-inTrain,]
+```
+
+## The models
+
+A number of models is trained on the 70% of the training subset and then validated against the train3 set.
+
+### Decision tree
+```{r dec}
+dt <- train(classe~., data=train7, method="rpart")
+pdt <- predict(dt, train3)     
+confmatDT <- confusionMatrix(pdt, train3$classe)
+confmatDT
+```
+### Random Forest
+```{r rf}
+rf <- train(classe~., data=train7, method="rf", prox=TRUE)
+prf <- predict(rf, train3)
+confmatRF <- confusionMatrix(prf, train3$classe)
+confmatRF
+```
+### other models (appendix)
+The NB and LDA models didn't score high in accuracy and will be ignored. 
+
+## Scoring the test set
+In order to answer the quiz questions, the random forest model is used to predict the 20 rows of the test dataset.
+
+```{r testrf}
+quiz <- predict(rf, test)
+quiz
+```
+
+## Conclusion
+The random forest model performs superior to the other model.
+
+## Appendix
+
+Find some additional info on models here.
+models:
+
+nb naive bayes (independence between variables, hmm....), not included in KNITR due to time out error
+lda linear discriminant analysis (idem)
+
+```{r models}
+#nb <- train(classe~., data=train7, method="nb")
+#lda <- train(classe~., data=train7, method="lda")
+#pnb <- predict(nb, train3)
+#plda <- predict(lda, train3)
+#table(plda, pnb)
+#confmatNB <- confusionMatrix(pnb, train3$classe)
+#confmatNB
+#confmatLDA <- confusionMatrix(plda, train3$classe)
+#confmatLDA
+```
+
+
+
+
